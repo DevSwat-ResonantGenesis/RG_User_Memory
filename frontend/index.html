@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Panel - Hash Sphere Universe</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0a0a1a;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+        #canvas-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+        }
+        .panel {
+            position: fixed;
+            background: rgba(10, 10, 30, 0.95);
+            border: 1px solid #334;
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        .panel h3 {
+            color: #a855f7;
+            margin-bottom: 15px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        #control-panel {
+            top: 20px; left: 20px;
+            width: 300px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+        #stats-panel {
+            top: 20px; right: 20px;
+            width: 200px;
+        }
+        #memory-panel {
+            bottom: 20px; right: 20px;
+            width: 350px;
+            max-height: 400px;
+            overflow-y: auto;
+            display: none;
+        }
+        #memory-panel.visible { display: block; }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .stat-label { color: #888; font-size: 12px; }
+        .stat-value { color: #a855f7; font-weight: 600; }
+        .section {
+            margin: 15px 0;
+            padding-top: 15px;
+            border-top: 1px solid #334;
+        }
+        .section-title {
+            font-size: 11px;
+            color: #a855f7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #1a1a3a, #2a2a4a);
+            border: 1px solid #445;
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            margin: 5px 0;
+            width: 100%;
+            transition: all 0.3s;
+        }
+        .btn:hover {
+            background: linear-gradient(135deg, #2a2a4a, #3a3a5a);
+            border-color: #a855f7;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #a855f7);
+            border-color: #a855f7;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        .input-group label {
+            display: block;
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        .input-group input,
+        .input-group textarea,
+        .input-group select {
+            width: 100%;
+            background: #1a1a3a;
+            border: 1px solid #334;
+            color: #fff;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .input-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        .input-group input:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: #a855f7;
+        }
+        .memory-content {
+            background: #1a1a3a;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+            max-height: 150px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+        .tag {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.3);
+            color: #a5b4fc;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin: 2px;
+        }
+        .layer-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .layer-core { background: #dc2626; color: #fff; }
+        .layer-active { background: #16a34a; color: #fff; }
+        .layer-peripheral { background: #2563eb; color: #fff; }
+        .layer-archive { background: #6b7280; color: #fff; }
+        #tooltip {
+            position: fixed;
+            background: rgba(0,0,0,0.9);
+            border: 1px solid #a855f7;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            max-width: 250px;
+        }
+        #loading {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 200;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid #334;
+            border-top-color: #a855f7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #legend {
+            position: fixed;
+            bottom: 20px; left: 20px;
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            color: #888;
+        }
+        .legend-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+        }
+        .search-results {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .search-result {
+            background: #1a1a3a;
+            border: 1px solid #334;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 5px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .search-result:hover {
+            border-color: #a855f7;
+        }
+        .search-result .title {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        .search-result .preview {
+            font-size: 11px;
+            color: #888;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .search-result .similarity {
+            font-size: 10px;
+            color: #a855f7;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="loading">
+        <div class="spinner"></div>
+        <div>Loading Memory Universe...</div>
+    </div>
+    
+    <!-- Control Panel -->
+    <div class="panel" id="control-panel">
+        <h3>🧠 Memory Panel</h3>
+        
+        <div class="section">
+            <div class="section-title">📝 Embed New Memory</div>
+            <div class="input-group">
+                <label>Title (optional)</label>
+                <input type="text" id="embed-title" placeholder="Memory title...">
+            </div>
+            <div class="input-group">
+                <label>Content *</label>
+                <textarea id="embed-content" placeholder="Enter your memory content..."></textarea>
+            </div>
+            <div class="input-group">
+                <label>Cluster</label>
+                <select id="embed-cluster">
+                    <option value="default">Default</option>
+                    <option value="work">Work</option>
+                    <option value="personal">Personal</option>
+                    <option value="ideas">Ideas</option>
+                    <option value="research">Research</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Layer</label>
+                <select id="embed-layer">
+                    <option value="active">Active</option>
+                    <option value="core">Core (Important)</option>
+                    <option value="peripheral">Peripheral</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Tags (comma separated)</label>
+                <input type="text" id="embed-tags" placeholder="tag1, tag2, tag3">
+            </div>
+            <button class="btn btn-primary" onclick="embedMemory()">
+                ✨ Embed Memory
+            </button>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">🔍 Search Memories</div>
+            <div class="input-group">
+                <input type="text" id="search-query" placeholder="Search by meaning...">
+            </div>
+            <button class="btn" onclick="searchMemories()">
+                🔎 Semantic Search
+            </button>
+            <div id="search-results" class="search-results"></div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">🎮 Navigation</div>
+            <p style="font-size: 11px; color: #666; margin-bottom: 10px;">
+                • Drag to rotate<br>
+                • Scroll to zoom<br>
+                • Click node to select
+            </p>
+            <button class="btn" onclick="resetCamera()">🎯 Reset View</button>
+            <button class="btn" onclick="focusCluster('default')">📍 Focus Default</button>
+        </div>
+    </div>
+    
+    <!-- Stats Panel -->
+    <div class="panel" id="stats-panel">
+        <h3>📊 Universe Stats</h3>
+        <div class="stat-row">
+            <span class="stat-label">Memories</span>
+            <span class="stat-value" id="stat-memories">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Connections</span>
+            <span class="stat-value" id="stat-edges">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Clusters</span>
+            <span class="stat-value" id="stat-clusters">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Storage</span>
+            <span class="stat-value" id="stat-storage">0 MB</span>
+        </div>
+    </div>
+    
+    <!-- Memory Details Panel -->
+    <div class="panel" id="memory-panel">
+        <h3>🔍 Memory Details</h3>
+        <div id="memory-title" style="font-weight: 600; font-size: 16px; margin-bottom: 10px;">-</div>
+        <div class="memory-content" id="memory-content">-</div>
+        <div style="margin: 10px 0;">
+            <span class="stat-label">Layer: </span>
+            <span class="layer-badge layer-active" id="memory-layer">active</span>
+        </div>
+        <div style="margin: 10px 0;">
+            <span class="stat-label">Cluster: </span>
+            <span id="memory-cluster">default</span>
+        </div>
+        <div style="margin: 10px 0;">
+            <span class="stat-label">Tags: </span>
+            <span id="memory-tags"></span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Coordinates</span>
+            <span class="stat-value" id="memory-coords">-</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Importance</span>
+            <span class="stat-value" id="memory-importance">-</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Access Count</span>
+            <span class="stat-value" id="memory-access">-</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Created</span>
+            <span class="stat-value" id="memory-created">-</span>
+        </div>
+        <button class="btn" onclick="archiveMemory()" id="archive-btn">📦 Archive Memory</button>
+        <button class="btn" onclick="closeMemoryPanel()">✕ Close</button>
+    </div>
+    
+    <!-- Legend -->
+    <div id="legend">
+        <div class="legend-item">
+            <div class="legend-dot" style="background: #dc2626;"></div>
+            <span>Core</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background: #16a34a;"></div>
+            <span>Active</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background: #2563eb;"></div>
+            <span>Peripheral</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background: #6b7280;"></div>
+            <span>Archive</span>
+        </div>
+    </div>
+    
+    <!-- Tooltip -->
+    <div id="tooltip"></div>
+    
+    <script>
+        // Three.js setup
+        let scene, camera, renderer;
+        let memories = [], edges = [], clusters = [];
+        let memoryMeshes = {}, edgeLines = {}, clusterSpheres = {};
+        let selectedMemory = null;
+        
+        // Layer colors
+        const layerColors = {
+            'core': 0xdc2626,
+            'active': 0x16a34a,
+            'peripheral': 0x2563eb,
+            'archive': 0x6b7280
+        };
+        
+        // Cluster colors
+        const clusterColors = {
+            'default': 0x6366f1,
+            'work': 0xf59e0b,
+            'personal': 0xec4899,
+            'ideas': 0x8b5cf6,
+            'research': 0x06b6d4
+        };
+        
+        // Initialize Three.js
+        function init() {
+            const container = document.getElementById('canvas-container');
+            
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a1a);
+            scene.fog = new THREE.FogExp2(0x0a0a1a, 0.0008);
+            
+            // Camera
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
+            camera.position.set(0, 0, 500);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+            
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+            
+            const pointLight = new THREE.PointLight(0xa855f7, 1, 1000);
+            pointLight.position.set(0, 0, 0);
+            scene.add(pointLight);
+            
+            // Add stars background
+            addStars();
+            
+            // Add coordinate grid sphere
+            addGridSphere();
+            
+            // Mouse controls
+            addMouseControls();
+            
+            // Window resize
+            window.addEventListener('resize', onWindowResize);
+            
+            // Start animation
+            animate();
+            
+            // Load initial state
+            loadUniverse();
+        }
+        
+        function addStars() {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            
+            for (let i = 0; i < 3000; i++) {
+                vertices.push(
+                    (Math.random() - 0.5) * 4000,
+                    (Math.random() - 0.5) * 4000,
+                    (Math.random() - 0.5) * 4000
+                );
+            }
+            
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            
+            const material = new THREE.PointsMaterial({
+                color: 0x444466,
+                size: 1,
+                transparent: true,
+                opacity: 0.6
+            });
+            
+            const stars = new THREE.Points(geometry, material);
+            scene.add(stars);
+        }
+        
+        function addGridSphere() {
+            // Add subtle grid sphere to show coordinate system
+            const gridGeometry = new THREE.SphereGeometry(300, 16, 16);
+            const gridMaterial = new THREE.MeshBasicMaterial({
+                color: 0x334455,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.1
+            });
+            const gridSphere = new THREE.Mesh(gridGeometry, gridMaterial);
+            scene.add(gridSphere);
+            
+            // Add axis lines
+            const axisLength = 400;
+            const axisMaterial = new THREE.LineBasicMaterial({ color: 0x334455, transparent: true, opacity: 0.3 });
+            
+            // X axis (red tint)
+            const xGeom = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-axisLength, 0, 0),
+                new THREE.Vector3(axisLength, 0, 0)
+            ]);
+            scene.add(new THREE.Line(xGeom, new THREE.LineBasicMaterial({ color: 0x663333, transparent: true, opacity: 0.3 })));
+            
+            // Y axis (green tint)
+            const yGeom = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, -axisLength, 0),
+                new THREE.Vector3(0, axisLength, 0)
+            ]);
+            scene.add(new THREE.Line(yGeom, new THREE.LineBasicMaterial({ color: 0x336633, transparent: true, opacity: 0.3 })));
+            
+            // Z axis (blue tint)
+            const zGeom = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, -axisLength),
+                new THREE.Vector3(0, 0, axisLength)
+            ]);
+            scene.add(new THREE.Line(zGeom, new THREE.LineBasicMaterial({ color: 0x333366, transparent: true, opacity: 0.3 })));
+        }
+        
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let spherical = { theta: 0, phi: Math.PI / 2, radius: 500 };
+        
+        function addMouseControls() {
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaX = e.clientX - previousMousePosition.x;
+                    const deltaY = e.clientY - previousMousePosition.y;
+                    
+                    spherical.theta -= deltaX * 0.005;
+                    spherical.phi -= deltaY * 0.005;
+                    spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+                    
+                    updateCameraPosition();
+                    previousMousePosition = { x: e.clientX, y: e.clientY };
+                }
+                
+                checkHover(e);
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+            
+            renderer.domElement.addEventListener('wheel', (e) => {
+                spherical.radius += e.deltaY * 0.5;
+                spherical.radius = Math.max(100, Math.min(2000, spherical.radius));
+                updateCameraPosition();
+            });
+            
+            renderer.domElement.addEventListener('click', (e) => {
+                if (!isDragging) checkClick(e);
+            });
+        }
+        
+        function updateCameraPosition() {
+            camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+            camera.position.y = spherical.radius * Math.cos(spherical.phi);
+            camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+            camera.lookAt(0, 0, 0);
+        }
+        
+        function resetCamera() {
+            spherical = { theta: 0, phi: Math.PI / 2, radius: 500 };
+            updateCameraPosition();
+        }
+        
+        function focusCluster(clusterName) {
+            const clusterMemories = memories.filter(m => m.cluster === clusterName);
+            if (clusterMemories.length === 0) return;
+            
+            // Calculate center of cluster
+            let cx = 0, cy = 0, cz = 0;
+            clusterMemories.forEach(m => {
+                cx += m.x || 0;
+                cy += m.y || 0;
+                cz += m.z || 0;
+            });
+            cx /= clusterMemories.length;
+            cy /= clusterMemories.length;
+            cz /= clusterMemories.length;
+            
+            // Move camera to focus on cluster
+            spherical.radius = 200;
+            updateCameraPosition();
+        }
+        
+        function checkHover(e) {
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2(
+                (e.clientX / window.innerWidth) * 2 - 1,
+                -(e.clientY / window.innerHeight) * 2 + 1
+            );
+            
+            raycaster.setFromCamera(mouse, camera);
+            const meshes = Object.values(memoryMeshes);
+            const intersects = raycaster.intersectObjects(meshes);
+            
+            const tooltip = document.getElementById('tooltip');
+            
+            if (intersects.length > 0) {
+                const mesh = intersects[0].object;
+                const memory = memories.find(m => m.id === mesh.userData.memoryId);
+                
+                if (memory) {
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = e.clientX + 15 + 'px';
+                    tooltip.style.top = e.clientY + 15 + 'px';
+                    tooltip.innerHTML = `
+                        <strong>${memory.title || 'Untitled'}</strong><br>
+                        <span style="color: #888;">${(memory.content || '').substring(0, 100)}...</span><br>
+                        <span style="color: #a855f7;">Layer: ${memory.layer}</span>
+                    `;
+                }
+            } else {
+                tooltip.style.display = 'none';
+            }
+        }
+        
+        function checkClick(e) {
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2(
+                (e.clientX / window.innerWidth) * 2 - 1,
+                -(e.clientY / window.innerHeight) * 2 + 1
+            );
+            
+            raycaster.setFromCamera(mouse, camera);
+            const meshes = Object.values(memoryMeshes);
+            const intersects = raycaster.intersectObjects(meshes);
+            
+            if (intersects.length > 0) {
+                const mesh = intersects[0].object;
+                const memory = memories.find(m => m.id === mesh.userData.memoryId);
+                if (memory) selectMemory(memory);
+            } else {
+                closeMemoryPanel();
+            }
+        }
+        
+        function selectMemory(memory) {
+            selectedMemory = memory;
+            
+            // Highlight selected node
+            Object.values(memoryMeshes).forEach(mesh => {
+                mesh.material.emissiveIntensity = 0.2;
+            });
+            if (memoryMeshes[memory.id]) {
+                memoryMeshes[memory.id].material.emissiveIntensity = 0.8;
+            }
+            
+            // Update panel
+            document.getElementById('memory-panel').classList.add('visible');
+            document.getElementById('memory-title').textContent = memory.title || 'Untitled Memory';
+            document.getElementById('memory-content').textContent = memory.content || '-';
+            
+            const layerEl = document.getElementById('memory-layer');
+            layerEl.textContent = memory.layer;
+            layerEl.className = `layer-badge layer-${memory.layer}`;
+            
+            document.getElementById('memory-cluster').textContent = memory.cluster || 'default';
+            
+            const tagsEl = document.getElementById('memory-tags');
+            tagsEl.innerHTML = (memory.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+            
+            document.getElementById('memory-coords').textContent = 
+                `(${(memory.x || 0).toFixed(1)}, ${(memory.y || 0).toFixed(1)}, ${(memory.z || 0).toFixed(1)})`;
+            document.getElementById('memory-importance').textContent = 
+                ((memory.importance || 0.5) * 100).toFixed(0) + '%';
+            document.getElementById('memory-access').textContent = memory.access_count || 0;
+            document.getElementById('memory-created').textContent = 
+                memory.created_at ? new Date(memory.created_at).toLocaleDateString() : '-';
+            
+            // Update archive button
+            const archiveBtn = document.getElementById('archive-btn');
+            if (memory.layer === 'archive') {
+                archiveBtn.textContent = '♻️ Restore Memory';
+                archiveBtn.onclick = () => restoreMemory();
+            } else {
+                archiveBtn.textContent = '📦 Archive Memory';
+                archiveBtn.onclick = () => archiveMemory();
+            }
+        }
+        
+        function closeMemoryPanel() {
+            selectedMemory = null;
+            document.getElementById('memory-panel').classList.remove('visible');
+            Object.values(memoryMeshes).forEach(mesh => {
+                mesh.material.emissiveIntensity = 0.2;
+            });
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Pulse effect for nodes
+            const now = Date.now();
+            Object.keys(memoryMeshes).forEach(id => {
+                const mesh = memoryMeshes[id];
+                const memory = memories.find(m => m.id === id);
+                if (memory && mesh) {
+                    const pulse = 1 + Math.sin(now * 0.002 + (memory.importance || 0.5) * 10) * 0.1;
+                    mesh.scale.setScalar(pulse * (mesh.userData.baseScale || 1));
+                }
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        // API Functions
+        async function loadUniverse() {
+            try {
+                // Use memory_service source for real ResonanceHasher PCA coordinates
+                const response = await fetch('/universe?source=memory_service');
+                const data = await response.json();
+                updateVisualization(data);
+                document.getElementById('loading').style.display = 'none';
+            } catch (error) {
+                console.error('Failed to load universe:', error);
+                document.getElementById('loading').innerHTML = '<div>Failed to connect. Retrying...</div>';
+                setTimeout(loadUniverse, 3000);
+            }
+        }
+        
+        function updateVisualization(data) {
+            memories = data.nodes || [];
+            edges = data.edges || [];
+            clusters = data.clusters || [];
+            
+            // Update stats
+            document.getElementById('stat-memories').textContent = memories.length;
+            document.getElementById('stat-edges').textContent = edges.length;
+            document.getElementById('stat-clusters').textContent = clusters.length;
+            document.getElementById('stat-storage').textContent = 
+                ((data.stats?.storage_mb || 0)).toFixed(2) + ' MB';
+            
+            // Clear old meshes
+            Object.values(memoryMeshes).forEach(mesh => {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            memoryMeshes = {};
+            
+            Object.values(edgeLines).forEach(line => {
+                scene.remove(line);
+                line.geometry.dispose();
+                line.material.dispose();
+            });
+            edgeLines = {};
+            
+            // Create memory nodes
+            memories.forEach(memory => {
+                const size = 5 + (memory.importance || 0.5) * 10;
+                const geometry = new THREE.SphereGeometry(size, 16, 16);
+                const color = layerColors[memory.layer] || layerColors.active;
+                
+                const material = new THREE.MeshPhongMaterial({
+                    color: color,
+                    emissive: color,
+                    emissiveIntensity: 0.2,
+                    transparent: true,
+                    opacity: memory.layer === 'archive' ? 0.5 : 0.9
+                });
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                
+                // Use real coordinates from ResonanceHasher PCA calculation
+                // Coordinates are already scaled by memory_service
+                mesh.position.set(
+                    memory.x || 0,
+                    memory.y || 0,
+                    memory.z || 0
+                );
+                
+                mesh.userData.memoryId = memory.id;
+                mesh.userData.baseScale = 1;
+                
+                scene.add(mesh);
+                memoryMeshes[memory.id] = mesh;
+            });
+            
+            // Create edges
+            const edgeMaterial = new THREE.LineBasicMaterial({
+                color: 0x334455,
+                transparent: true,
+                opacity: 0.3
+            });
+            
+            edges.forEach((edge, i) => {
+                const source = memories.find(m => m.id === edge.source);
+                const target = memories.find(m => m.id === edge.target);
+                
+                if (source && target) {
+                    const points = [
+                        new THREE.Vector3(source.x || 0, source.y || 0, source.z || 0),
+                        new THREE.Vector3(target.x || 0, target.y || 0, target.z || 0)
+                    ];
+                    
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const line = new THREE.Line(geometry, edgeMaterial);
+                    scene.add(line);
+                    edgeLines[`edge_${i}`] = line;
+                }
+            });
+        }
+        
+        async function embedMemory() {
+            const content = document.getElementById('embed-content').value.trim();
+            if (!content) {
+                alert('Please enter memory content');
+                return;
+            }
+            
+            const title = document.getElementById('embed-title').value.trim();
+            const cluster = document.getElementById('embed-cluster').value;
+            const layer = document.getElementById('embed-layer').value;
+            const tagsStr = document.getElementById('embed-tags').value;
+            const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+            
+            try {
+                const response = await fetch('/memories/embed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content,
+                        title: title || undefined,
+                        cluster,
+                        layer,
+                        tags
+                    })
+                });
+                
+                if (response.ok) {
+                    // Clear form
+                    document.getElementById('embed-content').value = '';
+                    document.getElementById('embed-title').value = '';
+                    document.getElementById('embed-tags').value = '';
+                    
+                    // Reload universe
+                    await loadUniverse();
+                } else {
+                    const err = await response.json();
+                    alert('Failed to embed: ' + (err.detail || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Embed failed:', error);
+                alert('Failed to embed memory');
+            }
+        }
+        
+        async function searchMemories() {
+            const query = document.getElementById('search-query').value.trim();
+            if (!query) return;
+            
+            try {
+                const response = await fetch('/memories/retrieve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, top_k: 5 })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    displaySearchResults(data.results || []);
+                }
+            } catch (error) {
+                console.error('Search failed:', error);
+            }
+        }
+        
+        function displaySearchResults(results) {
+            const container = document.getElementById('search-results');
+            
+            if (results.length === 0) {
+                container.innerHTML = '<div style="color: #666; font-size: 12px; padding: 10px;">No results found</div>';
+                return;
+            }
+            
+            container.innerHTML = results.map(r => `
+                <div class="search-result" onclick="focusOnMemory('${r.id}')">
+                    <div class="title">${r.title || 'Untitled'}</div>
+                    <div class="preview">${(r.content || '').substring(0, 80)}...</div>
+                    <div class="similarity">Similarity: ${((r.similarity || 0) * 100).toFixed(1)}%</div>
+                </div>
+            `).join('');
+        }
+        
+        function focusOnMemory(memoryId) {
+            const memory = memories.find(m => m.id === memoryId);
+            if (!memory) return;
+            
+            selectMemory(memory);
+            
+            // Move camera to focus on memory
+            const targetX = (memory.x || 0) * 100;
+            const targetY = (memory.y || 0) * 100;
+            const targetZ = (memory.z || 0) * 100;
+            
+            spherical.radius = 200;
+            updateCameraPosition();
+        }
+        
+        async function archiveMemory() {
+            if (!selectedMemory) return;
+            
+            try {
+                const response = await fetch(`/memories/${selectedMemory.id}/archive`, {
+                    method: 'PATCH'
+                });
+                
+                if (response.ok) {
+                    await loadUniverse();
+                    closeMemoryPanel();
+                }
+            } catch (error) {
+                console.error('Archive failed:', error);
+            }
+        }
+        
+        async function restoreMemory() {
+            if (!selectedMemory) return;
+            
+            try {
+                const response = await fetch(`/memories/${selectedMemory.id}/restore?layer=active`, {
+                    method: 'PATCH'
+                });
+                
+                if (response.ok) {
+                    await loadUniverse();
+                    closeMemoryPanel();
+                }
+            } catch (error) {
+                console.error('Restore failed:', error);
+            }
+        }
+        
+        // Initialize on load
+        init();
+    </script>
+</body>
+</html>
